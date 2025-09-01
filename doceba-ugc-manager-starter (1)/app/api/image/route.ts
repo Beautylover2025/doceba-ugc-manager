@@ -1,33 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { serverClient } from '@/lib/supabaseServer'
+import { NextResponse } from 'next/server';
+import { serverClient } from '../../../lib/supabaseServer';
 
-export const runtime = 'nodejs'
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const path = url.searchParams.get('path');
+  if (!path) return new NextResponse('Missing path', { status: 400 });
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const path = searchParams.get('path')
-  const filename = searchParams.get('filename') ?? (path?.split('/').pop() ?? 'download.bin')
+  const supabase = serverClient();
+  const { data, error } = await supabase
+    .storage
+    .from('ugc-uploads')
+    .createSignedUrl(path, 60);
 
-  if (!path) return NextResponse.json({ error: 'Missing path' }, { status: 400 })
-
-  const supabase = serverClient()
-  const { data, error } = await supabase.storage.from('ugc-uploads').createSignedUrl(path, 60)
   if (error || !data?.signedUrl) {
-    return NextResponse.json({ error: error?.message || 'sign failed' }, { status: 500 })
+    return new NextResponse('Not found', { status: 404 });
   }
 
-  const fetchRes = await fetch(data.signedUrl)
-  if (!fetchRes.ok) {
-    return NextResponse.json({ error: 'fetch failed' }, { status: 500 })
-  }
-
-  const contentType = fetchRes.headers.get('Content-Type') ?? 'application/octet-stream'
-  const blob = await fetchRes.blob()
-
-  return new Response(blob.stream(), {
+  const res = await fetch(data.signedUrl);
+  const buf = await res.arrayBuffer();
+  return new NextResponse(buf, {
+    status: res.status,
     headers: {
-      'Content-Type': contentType,
-      'Content-Disposition': `attachment; filename="${filename}"`
-    }
-  })
+      'content-type': res.headers.get('content-type') || 'application/octet-stream',
+      'cache-control': 'private, max-age=60',
+    },
+  });
 }
