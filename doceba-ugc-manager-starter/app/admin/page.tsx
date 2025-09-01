@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { serverClient } from '@/lib/supabaseServer'
 import { requireAdmin } from '@/lib/auth'
 
