@@ -24,11 +24,12 @@ type CreatorProgram = {
 }
 
 export default async function AdminDashboard() {
-  // Admin-Gate (SSR)
+  // Schutz: nur Admins dürfen diese Seite sehen
   await requireAdmin()
+
   const supabase = serverClient()
 
-  // --- Uploads inkl. Bildpfaden ---
+  // Uploads inkl. Bildpfaden abfragen
   const { data: uploads } = await supabase
     .from('uploads')
     .select(
@@ -39,28 +40,40 @@ export default async function AdminDashboard() {
 
   const rows = (uploads ?? []) as UploadRow[]
 
-  // --- Creators gesamt ---
+  // Anzahl Creator
   const { count: creatorsCount } = await supabase
     .from('profiles')
     .select('*', { count: 'exact', head: true })
 
-  // --- Uploads gesamt ---
+  // Anzahl Uploads gesamt
   const { count: uploadsCount } = await supabase
     .from('uploads')
     .select('*', { count: 'exact', head: true })
 
-  // --- Fehlende Uploads (aktuelle Woche) ---
-  // Hole alle Zuordnungen (Creator↔Programm) + Wochenanzahl
-  const { data: cps } = await supabase
+  // Fehlende Uploads aktuelle Woche berechnen:
+  // hole Zuordnungen (Creator↔Programm) – ACHTUNG: programs kann als Array zurückkommen
+  const { data: cpsRaw } = await supabase
     .from('creator_programs')
     .select('creator_id, program_id, start_date, programs(weeks)')
 
-  // Hole alle Uploads (nur id/programm/woche) um Missing zu berechnen
+  // hole alle Uploads (nur IDs/Programm/Woche)
   const { data: allUploads } = await supabase
     .from('uploads')
     .select('creator_id, program_id, week_index')
 
-  // Helfer: aktuelle Woche seit Programmstart bestimmen
+  // cps normalisieren: aus array/object immer ein object mit "weeks" machen
+  const cps: CreatorProgram[] = (cpsRaw ?? []).map((cp: any) => {
+    const programs = Array.isArray(cp.programs)
+      ? { weeks: cp.programs[0]?.weeks ?? null }
+      : { weeks: cp.programs?.weeks ?? null }
+    return {
+      creator_id: cp.creator_id as string,
+      program_id: cp.program_id as string,
+      start_date: (cp.start_date as string) ?? null,
+      programs
+    }
+  })
+
   function currentWeekFor(cp: CreatorProgram) {
     const weeks = cp.programs?.weeks ?? 8
     if (!cp.start_date) return 1
@@ -72,9 +85,9 @@ export default async function AdminDashboard() {
 
   let missingThisWeek = 0
   if (cps && allUploads) {
-    for (const cp of cps as CreatorProgram[]) {
+    for (const cp of cps) {
       const cw = currentWeekFor(cp)
-      const found = allUploads.some(
+      const found = (allUploads ?? []).some(
         (u) =>
           u.creator_id === cp.creator_id &&
           u.program_id === cp.program_id &&
@@ -84,18 +97,18 @@ export default async function AdminDashboard() {
     }
   }
 
-  // --- Helper: signierte URL erzeugen (5 Min gültig) ---
+  // signierte URL generieren (5 Minuten gültig)
   async function signedUrl(path?: string | null) {
     if (!path) return null
+    const cleaned = path.trim() // Path von Leerzeichen säubern (sonst %20-404)
     const { data, error } = await supabase.storage
       .from('ugc-uploads')
-      .createSignedUrl(path, 60 * 5)
+      .createSignedUrl(cleaned, 60 * 5)
     if (error || !data) return null
-    // Trim, damit kein führendes Leerzeichen zu "/%20https..." führt
     return (data.signedUrl ?? '').trim()
   }
 
-  // Pro Zeile signierte URLs bauen
+  // Thumbnails/Links vorbereiten
   const enhanced = await Promise.all(
     rows.map(async (r) => {
       const beforeUrl = await signedUrl(r.before_path)
@@ -108,7 +121,7 @@ export default async function AdminDashboard() {
     <main className="mx-auto max-w-6xl p-6">
       <h1 className="text-2xl font-semibold">Admin-Dashboard</h1>
 
-      {/* KPI-Kacheln */}
+      {/* KPI-Übersicht */}
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-2xl border bg-white p-4">
           <div className="text-sm text-gray-600">Creator gesamt</div>
@@ -119,12 +132,14 @@ export default async function AdminDashboard() {
           <div className="text-2xl font-semibold">{uploadsCount ?? 0}</div>
         </div>
         <div className="rounded-2xl border bg-white p-4">
-          <div className="text-sm text-gray-600">Fehlende Uploads (aktuelle Woche)</div>
+          <div className="text-sm text-gray-600">
+            Fehlende Uploads (aktuelle Woche)
+          </div>
           <div className="text-2xl font-semibold">{missingThisWeek}</div>
         </div>
       </div>
 
-      {/* Tabelle mit Bild-Vorschau + Download */}
+      {/* Tabelle mit Thumbnails + Downloadlink */}
       <div className="mt-6 overflow-auto rounded-2xl border bg-white">
         <table className="min-w-full text-sm">
           <thead className="sticky top-0 bg-gray-50">
@@ -150,7 +165,7 @@ export default async function AdminDashboard() {
                   </span>
                 </td>
 
-                {/* Vorher */}
+                {/* Vorher-Bild */}
                 <td className="p-2">
                   {r.beforeUrl ? (
                     <div>
@@ -175,7 +190,7 @@ export default async function AdminDashboard() {
                   )}
                 </td>
 
-                {/* Nachher */}
+                {/* Nachher-Bild */}
                 <td className="p-2">
                   {r.afterUrl ? (
                     <div>
@@ -200,7 +215,9 @@ export default async function AdminDashboard() {
                   )}
                 </td>
 
-                <td className="p-2">{new Date(r.created_at).toLocaleString()}</td>
+                <td className="p-2">
+                  {new Date(r.created_at).toLocaleString()}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -209,5 +226,3 @@ export default async function AdminDashboard() {
     </main>
   )
 }
-
-
