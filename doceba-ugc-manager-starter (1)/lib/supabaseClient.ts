@@ -1,5 +1,6 @@
 'use client'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import type { SupabaseClient } from '@supabase/supabase-js'
 
-export const supabase: SupabaseClient = createClientComponentClient()
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+
+// Kein expliziter Type! Inferenz passt hier perfekt.
+export const supabase = createClientComponentClient()
