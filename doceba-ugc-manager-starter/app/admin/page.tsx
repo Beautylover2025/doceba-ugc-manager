@@ -1,216 +1,119 @@
-export const dynamic = 'force-dynamic'
+// app/admin/page.tsx
+export const dynamic = 'force-dynamic';
 
-import { serverClient } from '@/lib/supabaseServer'
-import { requireAdmin } from '@/lib/auth'
-
-type UploadRow = {
-  id: string
-  creator_id: string
-  program_id: string
-  week_index: number
-  status: string
-  created_at: string
-  before_path?: string | null
-  after_path?: string | null
-}
-
-type CreatorProgram = {
-  creator_id: string
-  program_id: string
-  start_date: string | null
-  programs: {
-    weeks: number | null
-  } | null
-}
+import { requireAdmin } from '@/lib/auth';
+import { serverClient } from '@/lib/supabaseServer';
+import { KPICard } from '@/components/KPICard';
+import { UploadTable } from '@/components/UploadTable';
+import type { KPI, UploadRow, UploadStatus } from '@/types/admin';
 
 export default async function AdminDashboard() {
-  await requireAdmin()
-  const supabase = serverClient()
+  await requireAdmin();
 
-  // Uploads inkl. Bildpfade
-  const { data: uploads } = await supabase
-    .from('uploads')
-    .select(
-      'id, creator_id, program_id, week_index, status, created_at, before_path, after_path'
-    )
-    .order('created_at', { ascending: false })
-    .limit(200)
-  const rows = (uploads ?? []) as UploadRow[]
+  const supabase = serverClient();
 
-  // KPI: Creator gesamt
-  const { count: creatorsCount } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
+  // --- KPIs & Daten abrufen -----------------------------------------------
+  const [
+    uploadsCountRes,
+    creatorCountRes,
+    uploadsRes,
+    cpsRes,
+  ] = await Promise.all([
+    supabase.from('uploads').select('id', { count: 'exact', head: true }),
+    supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'creator'),
+    supabase
+      .from('uploads')
+      .select('id, creator_id, program_id, week_index, status, created_at')
+      .order('created_at', { ascending: false })
+      .limit(200),
+    supabase
+      .from('creator_programs')
+      .select('creator_id, program_id, start_date, programs(weeks)'),
+  ]);
 
-  // KPI: Uploads gesamt
-  const { count: uploadsCount } = await supabase
-    .from('uploads')
-    .select('*', { count: 'exact', head: true })
+  const uploads = uploadsRes.data ?? [];
+  const cps = (cpsRes.data ?? []) as {
+    creator_id: string;
+    program_id: string;
+    start_date: string;
+    programs?: { weeks: number | null }[];
+  }[];
 
-  // KPI: Fehlende Uploads (aktuelle Woche)
-  const { data: cpsRaw } = await supabase
-    .from('creator_programs')
-    .select('creator_id, program_id, start_date, programs(weeks)')
-  const { data: allUploads } = await supabase
-    .from('uploads')
-    .select('creator_id, program_id, week_index')
-
-  // Normalisieren, falls programs als Array zurückkommt
-  const cps: CreatorProgram[] = (cpsRaw ?? []).map((cp: any) => {
-    const programs = Array.isArray(cp.programs)
-      ? { weeks: cp.programs[0]?.weeks ?? null }
-      : { weeks: cp.programs?.weeks ?? null }
-    return {
-      creator_id: cp.creator_id as string,
-      program_id: cp.program_id as string,
-      start_date: (cp.start_date as string) ?? null,
-      programs,
-    }
-  })
-
-  function currentWeekFor(cp: CreatorProgram) {
-    const weeks = cp.programs?.weeks ?? 8
-    if (!cp.start_date) return 1
-    const start = new Date(cp.start_date).getTime()
-    const diffDays = Math.floor((Date.now() - start) / (24 * 60 * 60 * 1000))
-    const w = Math.floor(diffDays / 7) + 1
-    return Math.min(Math.max(w, 1), weeks)
+  // Aktuelle Woche pro Zuordnung (Startdatum + Programmlänge beachten)
+  function currentWeekFor(cp: { start_date: string; programs?: { weeks: number | null }[] }) {
+    const start = new Date(cp.start_date);
+    const ms = Date.now() - start.getTime();
+    const elapsedWeeks = Math.floor(ms / (1000 * 60 * 60 * 24 * 7)) + 1;
+    const maxWeeks = cp.programs?.[0]?.weeks ?? 12;
+    return Math.max(1, Math.min(elapsedWeeks, maxWeeks));
   }
 
-  let missingThisWeek = 0
-  if (cps && allUploads) {
+  // Wie viele Uploads fehlen (dieser Woche) pro Creator/Programm
+  let missingThisWeek = 0;
+  if (cps.length && uploads.length >= 0) {
+    const present = new Set(
+      uploads.map((u) => `${u.creator_id}|${u.program_id}|${u.week_index}`)
+    );
     for (const cp of cps) {
-      const cw = currentWeekFor(cp)
-      const found = (allUploads ?? []).some(
-        (u) =>
-          u.creator_id === cp.creator_id &&
-          u.program_id === cp.program_id &&
-          u.week_index === cw
-      )
-      if (!found) missingThisWeek++
+      const cw = currentWeekFor(cp);
+      const key = `${cp.creator_id}|${cp.program_id}|${cw}`;
+      if (!present.has(key)) missingThisWeek++;
     }
   }
 
-  // Für Bilder/Downloads nutzen wir die interne API-Route /api/image
-  // und übergeben nur den Pfad. Damit vermeiden wir %20/Leerzeichen-Probleme.
-  function proxyUrl(path?: string | null) {
-    if (!path) return null
-    const clean = path.trim()
-    return `/api/image?path=${encodeURIComponent(clean)}`
+  // Helfer: signierte URL aus Storage erzeugen
+  async function sign(path: string) {
+    const { data } = await supabase
+      .storage
+      .from('ugc-uploads')
+      .createSignedUrl(path, 60 * 60);
+    return data?.signedUrl ?? null;
   }
 
+  // Tabelle mit Thumbs & Download-Links
+  const rows: UploadRow[] = [];
+  for (const r of uploads) {
+    const base = `creator/${r.creator_id}/program/${r.program_id}/week-${r.week_index}`;
+    const [beforeUrl, afterUrl] = await Promise.all([
+      sign(`${base}/before.jpg`),
+      sign(`${base}/after.jpg`),
+    ]);
+
+    rows.push({
+      id: r.id,
+      creatorId: r.creator_id,
+      programId: r.program_id,
+      week: r.week_index,
+      status: (r.status as UploadStatus) || 'submitted',
+      createdAt: r.created_at,
+      before: { thumbUrl: beforeUrl, downloadHref: beforeUrl },
+      after:  { thumbUrl: afterUrl,  downloadHref: afterUrl  },
+    });
+  }
+
+  const kpis: KPI[] = [
+    { title: 'Creator gesamt', value: uploadsCountRes.error ? '-' : (creatorCountRes.count ?? 0), variant: 'primary' },
+    { title: 'Uploads gesamt', value: uploadsCountRes.count ?? 0, variant: 'success' },
+    { title: 'Fehlende Uploads (diese Woche)', value: missingThisWeek, variant: 'warning' },
+  ];
+
+  // --- Render --------------------------------------------------------------
   return (
-    <main className="mx-auto max-w-6xl p-6">
-      <h1 className="text-2xl font-semibold">Admin-Dashboard</h1>
+    <main className="mx-auto max-w-7xl p-6 space-y-8">
+      <header className="space-y-2">
+        <h1 className="text-3xl font-bold">Upload-Verwaltung</h1>
+        <p className="text-gray-500">Übersicht über alle Creator-Uploads und deren Status</p>
+      </header>
 
-      {/* KPI-Kacheln */}
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-2xl border bg-white p-4">
-          <div className="text-sm text-gray-600">Creator gesamt</div>
-          <div className="text-2xl font-semibold">{creatorsCount ?? 0}</div>
-        </div>
-        <div className="rounded-2xl border bg-white p-4">
-          <div className="text-sm text-gray-600">Uploads gesamt</div>
-          <div className="text-2xl font-semibold">{uploadsCount ?? 0}</div>
-        </div>
-        <div className="rounded-2xl border bg-white p-4">
-          <div className="text-sm text-gray-600">
-            Fehlende Uploads (aktuelle Woche)
-          </div>
-          <div className="text-2xl font-semibold">{missingThisWeek}</div>
-        </div>
-      </div>
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {kpis.map((k, i) => <KPICard key={i} {...k} />)}
+      </section>
 
-      {/* Tabelle mit Thumbnails + Downloadlink (via /api/image) */}
-      <div className="mt-6 overflow-auto rounded-2xl border bg-white">
-        <table className="min-w-full text-sm">
-          <thead className="sticky top-0 bg-gray-50">
-            <tr>
-              <th className="p-2 text-left">Creator</th>
-              <th className="p-2 text-left">Programm</th>
-              <th className="p-2 text-center">Woche</th>
-              <th className="p-2 text-left">Status</th>
-              <th className="p-2 text-left">Vorher</th>
-              <th className="p-2 text-left">Nachher</th>
-              <th className="p-2 text-left">Erstellt</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const before = proxyUrl(r.before_path)
-              const after = proxyUrl(r.after_path)
-
-              return (
-                <tr key={r.id} className="border-t align-top">
-                  <td className="p-2">{r.creator_id.slice(0, 8)}</td>
-                  <td className="p-2">{r.program_id.slice(0, 8)}</td>
-                  <td className="p-2 text-center">{r.week_index}</td>
-                  <td className="p-2">
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
-                      {r.status}
-                    </span>
-                  </td>
-
-                  {/* Vorher-Bild */}
-                  <td className="p-2">
-                    {before ? (
-                      <div>
-                        <img
-                          src={before}
-                          alt="Vorher"
-                          className="h-24 w-24 rounded object-cover"
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                        />
-                        <a
-                          href={before}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1 block text-xs text-blue-600 underline"
-                        >
-                          Download
-                        </a>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400">Kein Bild</span>
-                    )}
-                  </td>
-
-                  {/* Nachher-Bild */}
-                  <td className="p-2">
-                    {after ? (
-                      <div>
-                        <img
-                          src={after}
-                          alt="Nachher"
-                          className="h-24 w-24 rounded object-cover"
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                        />
-                        <a
-                          href={after}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1 block text-xs text-blue-600 underline"
-                        >
-                          Download
-                        </a>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400">Kein Bild</span>
-                    )}
-                  </td>
-
-                  <td className="p-2">
-                    {new Date(r.created_at).toLocaleString()}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <section className="space-y-3">
+        <h2 className="text-xl font-semibold">Upload-Übersicht</h2>
+        <UploadTable uploads={rows} />
+      </section>
     </main>
-  )
+  );
 }
 
