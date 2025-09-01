@@ -24,12 +24,10 @@ type CreatorProgram = {
 }
 
 export default async function AdminDashboard() {
-  // Schutz: nur Admins dürfen diese Seite sehen
   await requireAdmin()
-
   const supabase = serverClient()
 
-  // Uploads inkl. Bildpfaden abfragen
+  // Uploads inkl. Bildpfade
   const { data: uploads } = await supabase
     .from('uploads')
     .select(
@@ -37,31 +35,27 @@ export default async function AdminDashboard() {
     )
     .order('created_at', { ascending: false })
     .limit(200)
-
   const rows = (uploads ?? []) as UploadRow[]
 
-  // Anzahl Creator
+  // KPI: Creator gesamt
   const { count: creatorsCount } = await supabase
     .from('profiles')
     .select('*', { count: 'exact', head: true })
 
-  // Anzahl Uploads gesamt
+  // KPI: Uploads gesamt
   const { count: uploadsCount } = await supabase
     .from('uploads')
     .select('*', { count: 'exact', head: true })
 
-  // Fehlende Uploads aktuelle Woche berechnen:
-  // hole Zuordnungen (Creator↔Programm) – ACHTUNG: programs kann als Array zurückkommen
+  // KPI: Fehlende Uploads (aktuelle Woche)
   const { data: cpsRaw } = await supabase
     .from('creator_programs')
     .select('creator_id, program_id, start_date, programs(weeks)')
-
-  // hole alle Uploads (nur IDs/Programm/Woche)
   const { data: allUploads } = await supabase
     .from('uploads')
     .select('creator_id, program_id, week_index')
 
-  // cps normalisieren: aus array/object immer ein object mit "weeks" machen
+  // Normalisieren, falls programs als Array zurückkommt
   const cps: CreatorProgram[] = (cpsRaw ?? []).map((cp: any) => {
     const programs = Array.isArray(cp.programs)
       ? { weeks: cp.programs[0]?.weeks ?? null }
@@ -70,7 +64,7 @@ export default async function AdminDashboard() {
       creator_id: cp.creator_id as string,
       program_id: cp.program_id as string,
       start_date: (cp.start_date as string) ?? null,
-      programs
+      programs,
     }
   })
 
@@ -97,31 +91,19 @@ export default async function AdminDashboard() {
     }
   }
 
-  // signierte URL generieren (5 Minuten gültig)
-  async function signedUrl(path?: string | null) {
+  // Für Bilder/Downloads nutzen wir die interne API-Route /api/image
+  // und übergeben nur den Pfad. Damit vermeiden wir %20/Leerzeichen-Probleme.
+  function proxyUrl(path?: string | null) {
     if (!path) return null
-    const cleaned = path.trim() // Path von Leerzeichen säubern (sonst %20-404)
-    const { data, error } = await supabase.storage
-      .from('ugc-uploads')
-      .createSignedUrl(cleaned, 60 * 5)
-    if (error || !data) return null
-    return (data.signedUrl ?? '').trim()
+    const clean = path.trim()
+    return `/api/image?path=${encodeURIComponent(clean)}`
   }
-
-  // Thumbnails/Links vorbereiten
-  const enhanced = await Promise.all(
-    rows.map(async (r) => {
-      const beforeUrl = await signedUrl(r.before_path)
-      const afterUrl = await signedUrl(r.after_path)
-      return { ...r, beforeUrl, afterUrl }
-    })
-  )
 
   return (
     <main className="mx-auto max-w-6xl p-6">
       <h1 className="text-2xl font-semibold">Admin-Dashboard</h1>
 
-      {/* KPI-Übersicht */}
+      {/* KPI-Kacheln */}
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-2xl border bg-white p-4">
           <div className="text-sm text-gray-600">Creator gesamt</div>
@@ -139,7 +121,7 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
-      {/* Tabelle mit Thumbnails + Downloadlink */}
+      {/* Tabelle mit Thumbnails + Downloadlink (via /api/image) */}
       <div className="mt-6 overflow-auto rounded-2xl border bg-white">
         <table className="min-w-full text-sm">
           <thead className="sticky top-0 bg-gray-50">
@@ -154,75 +136,81 @@ export default async function AdminDashboard() {
             </tr>
           </thead>
           <tbody>
-            {enhanced.map((r) => (
-              <tr key={r.id} className="border-t align-top">
-                <td className="p-2">{r.creator_id.slice(0, 8)}</td>
-                <td className="p-2">{r.program_id.slice(0, 8)}</td>
-                <td className="p-2 text-center">{r.week_index}</td>
-                <td className="p-2">
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
-                    {r.status}
-                  </span>
-                </td>
+            {rows.map((r) => {
+              const before = proxyUrl(r.before_path)
+              const after = proxyUrl(r.after_path)
 
-                {/* Vorher-Bild */}
-                <td className="p-2">
-                  {r.beforeUrl ? (
-                    <div>
-                      <img
-                        src={r.beforeUrl}
-                        alt="Vorher"
-                        className="h-24 w-24 rounded object-cover"
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
-                      <a
-                        href={r.beforeUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1 block text-xs text-blue-600 underline"
-                      >
-                        Download
-                      </a>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-400">Kein Bild</span>
-                  )}
-                </td>
+              return (
+                <tr key={r.id} className="border-t align-top">
+                  <td className="p-2">{r.creator_id.slice(0, 8)}</td>
+                  <td className="p-2">{r.program_id.slice(0, 8)}</td>
+                  <td className="p-2 text-center">{r.week_index}</td>
+                  <td className="p-2">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
+                      {r.status}
+                    </span>
+                  </td>
 
-                {/* Nachher-Bild */}
-                <td className="p-2">
-                  {r.afterUrl ? (
-                    <div>
-                      <img
-                        src={r.afterUrl}
-                        alt="Nachher"
-                        className="h-24 w-24 rounded object-cover"
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
-                      <a
-                        href={r.afterUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1 block text-xs text-blue-600 underline"
-                      >
-                        Download
-                      </a>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-400">Kein Bild</span>
-                  )}
-                </td>
+                  {/* Vorher-Bild */}
+                  <td className="p-2">
+                    {before ? (
+                      <div>
+                        <img
+                          src={before}
+                          alt="Vorher"
+                          className="h-24 w-24 rounded object-cover"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                        <a
+                          href={before}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 block text-xs text-blue-600 underline"
+                        >
+                          Download
+                        </a>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">Kein Bild</span>
+                    )}
+                  </td>
 
-                <td className="p-2">
-                  {new Date(r.created_at).toLocaleString()}
-                </td>
-              </tr>
-            ))}
+                  {/* Nachher-Bild */}
+                  <td className="p-2">
+                    {after ? (
+                      <div>
+                        <img
+                          src={after}
+                          alt="Nachher"
+                          className="h-24 w-24 rounded object-cover"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                        <a
+                          href={after}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 block text-xs text-blue-600 underline"
+                        >
+                          Download
+                        </a>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">Kein Bild</span>
+                    )}
+                  </td>
+
+                  <td className="p-2">
+                    {new Date(r.created_at).toLocaleString()}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
     </main>
   )
 }
+
