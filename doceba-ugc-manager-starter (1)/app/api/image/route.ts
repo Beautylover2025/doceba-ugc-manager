@@ -1,28 +1,24 @@
-import { NextResponse } from 'next/server';
-import { serverClient } from '../../../lib/supabaseServer';
+export const runtime = 'nodejs'
+
+import { NextResponse } from 'next/server'
+import { serverClient } from '../../../lib/supabaseServer' // relativ importieren!
 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const path = url.searchParams.get('path');
-  if (!path) return new NextResponse('Missing path', { status: 400 });
+  const { searchParams } = new URL(req.url)
+  const path = searchParams.get('path')
+  if (!path) {
+    return NextResponse.json({ error: 'missing path' }, { status: 400 })
+  }
 
-  const supabase = serverClient();
+  const supabase = serverClient()
   const { data, error } = await supabase
     .storage
     .from('ugc-uploads')
-    .createSignedUrl(path, 60);
+    .createSignedUrl(path, 60)
 
   if (error || !data?.signedUrl) {
-    return new NextResponse('Not found', { status: 404 });
+    return NextResponse.json({ error: error?.message ?? 'no url' }, { status: 400 })
   }
 
-  const res = await fetch(data.signedUrl);
-  const buf = await res.arrayBuffer();
-  return new NextResponse(buf, {
-    status: res.status,
-    headers: {
-      'content-type': res.headers.get('content-type') || 'application/octet-stream',
-      'cache-control': 'private, max-age=60',
-    },
-  });
+  return NextResponse.redirect(data.signedUrl)
 }
