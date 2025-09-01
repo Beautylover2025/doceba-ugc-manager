@@ -9,16 +9,9 @@ import type { KPI, UploadRow, UploadStatus } from '@/types/admin';
 
 export default async function AdminDashboard() {
   await requireAdmin();
-
   const supabase = serverClient();
 
-  // --- KPIs & Daten abrufen -----------------------------------------------
-  const [
-    uploadsCountRes,
-    creatorCountRes,
-    uploadsRes,
-    cpsRes,
-  ] = await Promise.all([
+  const [uploadsCountRes, creatorCountRes, uploadsRes, cpsRes] = await Promise.all([
     supabase.from('uploads').select('id', { count: 'exact', head: true }),
     supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'creator'),
     supabase
@@ -39,7 +32,6 @@ export default async function AdminDashboard() {
     programs?: { weeks: number | null }[];
   }[];
 
-  // Aktuelle Woche pro Zuordnung (Startdatum + Programmlänge beachten)
   function currentWeekFor(cp: { start_date: string; programs?: { weeks: number | null }[] }) {
     const start = new Date(cp.start_date);
     const ms = Date.now() - start.getTime();
@@ -48,7 +40,6 @@ export default async function AdminDashboard() {
     return Math.max(1, Math.min(elapsedWeeks, maxWeeks));
   }
 
-  // Wie viele Uploads fehlen (dieser Woche) pro Creator/Programm
   let missingThisWeek = 0;
   if (cps.length && uploads.length >= 0) {
     const present = new Set(
@@ -61,22 +52,24 @@ export default async function AdminDashboard() {
     }
   }
 
-  // Helfer: signierte URL aus Storage erzeugen
-  async function sign(path: string) {
-    const { data } = await supabase
-      .storage
-      .from('ugc-uploads')
-      .createSignedUrl(path, 60 * 60);
-    return data?.signedUrl ?? null;
+  // helper: probiere mehrere Dateiendungen, bis eine signierte URL vorhanden ist
+  async function signFirst(paths: string[]) {
+    for (const p of paths) {
+      const { data } = await supabase
+        .storage
+        .from('ugc-uploads')
+        .createSignedUrl(p, 60 * 60);
+      if (data?.signedUrl) return data.signedUrl;
+    }
+    return null;
   }
 
-  // Tabelle mit Thumbs & Download-Links
   const rows: UploadRow[] = [];
   for (const r of uploads) {
     const base = `creator/${r.creator_id}/program/${r.program_id}/week-${r.week_index}`;
     const [beforeUrl, afterUrl] = await Promise.all([
-      sign(`${base}/before.jpg`),
-      sign(`${base}/after.jpg`),
+      signFirst([`${base}/before.jpg`, `${base}/before.jpeg`, `${base}/before.png`]),
+      signFirst([`${base}/after.jpg`, `${base}/after.jpeg`, `${base}/after.png`]),
     ]);
 
     rows.push({
@@ -92,12 +85,11 @@ export default async function AdminDashboard() {
   }
 
   const kpis: KPI[] = [
-    { title: 'Creator gesamt', value: uploadsCountRes.error ? '-' : (creatorCountRes.count ?? 0), variant: 'primary' },
+    { title: 'Creator gesamt', value: creatorCountRes.count ?? 0, variant: 'primary' },
     { title: 'Uploads gesamt', value: uploadsCountRes.count ?? 0, variant: 'success' },
     { title: 'Fehlende Uploads (diese Woche)', value: missingThisWeek, variant: 'warning' },
   ];
 
-  // --- Render --------------------------------------------------------------
   return (
     <main className="mx-auto max-w-7xl p-6 space-y-8">
       <header className="space-y-2">
@@ -116,4 +108,3 @@ export default async function AdminDashboard() {
     </main>
   );
 }
-
