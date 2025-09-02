@@ -37,16 +37,16 @@
     --ring: 221 83% 53%;
 
     /* Statusfarben */
-    --success: 142 70% 36%;             /* Grün */
+    --success: 142 70% 36%;             /* Grün */
     --success-foreground: 0 0% 100%;
     --warning: 34 94% 50%;              /* Orange */
     --warning-foreground: 24 94% 9%;
 
-    /* Zusatz für dezente Flächen/Gradients */
+    /* Zusatz für dezente Flächen/Gradients */
     --brand-bg: 220 60% 99%;
     --primary-subtle: 221 100% 96%;
 
-    /* Radius für shadcn */
+    /* Radius für shadcn */
     --radius: 0.75rem;
   }
 
@@ -77,7 +77,7 @@
   }
 
   /* Grundtypografie/Flächen via Tokens */
-  * { @apply border-border; }
+  *, ::before, ::after { border-color: hsl(var(--border)); }
   body { @apply bg-background text-foreground antialiased; }
 }
 
@@ -97,28 +97,21 @@
 
   /* Sehr dezente Seitenfläche */
   .bg-gradient-subtle {
-    background-image: radial-gradient(
-      1200px 600px at 20% -10%,
-      hsl(var(--primary-subtle)) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      1200px 600px at 120% 10%,
-      hsl(var(--primary-subtle)) 0%,
-      transparent 60%
-    );
+    background-image:
+      radial-gradient(1200px 600px at 20% -10%, hsl(var(--primary-subtle)) 0%, transparent 60%),
+      radial-gradient(1200px 600px at 120% 10%, hsl(var(--primary-subtle)) 0%, transparent 60%);
     background-color: hsl(var(--brand-bg));
   }
 
   /* Karte/Schatten wie in Lovable */
   .shadow-card {
     box-shadow:
-      0 1px 2px rgba(16,24,40,.04),
-      0 8px 24px rgba(16,24,40,.06);
+      0 1px 2px rgba(16, 24, 40, 0.04),
+      0 8px 24px rgba(16, 24, 40, 0.06);
   }
 }
 
-/* Optional – kleine Glättung für Buttons/Badges */
+/* Optional – kleine Glättung für Buttons/Badges */
 @layer components {
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
