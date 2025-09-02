@@ -1,19 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Camera, CheckCircle, Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-interface PhotoSlot {
-  id: string;
-  label: string;
-  required: boolean;
-}
+type SlotId = "front" | "left-cheek" | "right-cheek" | "forehead" | "chin";
 
-const photoSlots: PhotoSlot[] = [
+const slots: Array<{ id: SlotId; label: string; required: boolean }> = [
   { id: "front", label: "Front", required: true },
   { id: "left-cheek", label: "Linke Wange", required: true },
   { id: "right-cheek", label: "Rechte Wange", required: true },
@@ -21,7 +13,8 @@ const photoSlots: PhotoSlot[] = [
   { id: "chin", label: "Kinn", required: false },
 ];
 
-const CONSENT_KEY = "doceba-consent-v1";
+// 👉 hier den Ziel-Bucket festlegen
+const BUCKET = "ugc"; // <--- nicht "ugc-uploads"
 
 export default function UploadCard({
   weekNumber,
@@ -30,204 +23,180 @@ export default function UploadCard({
   weekNumber: number;
   isFirstWeek?: boolean;
 }) {
-  const [uploadedPhotos, setUploadedPhotos] = useState<Record<string, File>>({});
+  const supabase = createClientComponentClient();
+  const [files, setFiles] = useState<Record<SlotId, File | null>>({
+    front: null,
+    "left-cheek": null,
+    "right-cheek": null,
+    forehead: null,
+    chin: null,
+  });
   const [note, setNote] = useState("");
-  const [isUploading, setIsUploading] = useState(false);
-  const [consentAccepted, setConsentAccepted] = useState(false);
-  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<null | { kind: "ok" | "err"; text: string }>(
+    null
+  );
 
-  useEffect(() => {
-    // MVP: Consent aus localStorage laden
-    try {
-      const stored = localStorage.getItem(CONSENT_KEY);
-      setConsentAccepted(stored === "1");
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const handlePhotoSelect = (slotId: string, file: File) => {
-    setUploadedPhotos((prev) => ({ ...prev, [slotId]: file }));
+  const onPick = (slot: SlotId, file: File | null) => {
+    setFiles((p) => ({ ...p, [slot]: file }));
   };
 
-  const handleConsentToggle = (checked: boolean) => {
-    setConsentAccepted(checked);
-    try {
-      localStorage.setItem(CONSENT_KEY, checked ? "1" : "0");
-    } catch {
-      // ignore
-    }
-  };
+  const validate = () =>
+    slots.filter((s) => s.required).every((s) => Boolean(files[s.id]));
 
   const handleUpload = async () => {
-    const requiredSlots = photoSlots.filter((slot) => slot.required);
-    const hasAllRequired = requiredSlots.every((slot) => uploadedPhotos[slot.id]);
+    setMsg(null);
 
-    if (!consentAccepted) {
-      toast({
-        title: "Einwilligung erforderlich",
-        description:
-          "Bitte bestätige die Einwilligung & Nutzungsbedingungen, bevor du Bilder hochlädst.",
-        variant: "destructive",
+    if (!validate()) {
+      setMsg({
+        kind: "err",
+        text: "Bitte lade alle erforderlichen Fotos hoch (Front, linke/rechte Wange, Stirn).",
       });
       return;
     }
 
-    if (!hasAllRequired) {
-      toast({
-        title: "Fehlende Fotos",
-        description: "Bitte lade alle erforderlichen Fotos hoch.",
-        variant: "destructive",
-      });
-      return;
-    }
+    setBusy(true);
+    try {
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
+      if (userErr || !user) throw new Error("Nicht eingeloggt.");
 
-    setIsUploading(true);
+      const programId = "default";
+      const photos: Record<string, string> = {};
 
-    // MVP Simulation – hier später Supabase Upload + DB-Record
-    setTimeout(() => {
-      setIsUploading(false);
-      toast({
-        title: "Erfolgreich hochgeladen!",
-        description: `Danke! Dein Set für Woche ${weekNumber} ist gespeichert.`,
-        variant: "default",
+      // Dateien in Storage hochladen
+      for (const s of slots) {
+        const f = files[s.id];
+        if (!f) continue;
+
+        const ext = (f.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${user.id}/${programId}/week-${weekNumber}/${s.id}.${ext}`;
+
+        const { error: upErr } = await supabase.storage
+          .from(BUCKET)
+          .upload(path, f, { upsert: true });
+
+        if (upErr) {
+          console.error("Upload error", s.id, upErr);
+          throw new Error(`Upload fehlgeschlagen für ${s.label}: ${upErr.message}`);
+        }
+        photos[s.id] = path;
+      }
+
+      // Status ableiten
+      const requiredCount = slots.filter((s) => s.required).length;
+      const uploadedRequired = slots
+        .filter((s) => s.required)
+        .filter((s) => photos[s.id]).length;
+      const status = uploadedRequired === requiredCount ? "complete" : "partial";
+
+      // 📝 DB-Insert (Kompatibilität: user_id + creator_id; week + week_index)
+      const { error: insErr } = await supabase.from("uploads").insert({
+        user_id: user.id,
+        creator_id: user.id,     // falls dein Admin heute noch 'creator_id' nutzt
+        program_id: programId,
+        week: weekNumber,
+        week_index: weekNumber,  // falls es diese Spalte bei dir gibt
+        note,
+        photos,                  // JSON-B mit Pfaden
+        status,
       });
-      setUploadedPhotos({});
+
+      if (insErr) {
+        console.error("DB insert error", insErr);
+        throw new Error(`DB-Eintrag fehlgeschlagen: ${insErr.message}`);
+      }
+
+      // Reset + Hinweis
+      setFiles({
+        front: null,
+        "left-cheek": null,
+        "right-cheek": null,
+        forehead: null,
+        chin: null,
+      });
       setNote("");
-    }, 1500);
+      setMsg({
+        kind: "ok",
+        text: status === "complete"
+          ? `Erfolgreich hochgeladen – Woche ${weekNumber} vollständig.`
+          : `Hochgeladen – Woche ${weekNumber} teilweise.`,
+      });
+    } catch (e: any) {
+      setMsg({ kind: "err", text: e?.message || "Upload fehlgeschlagen." });
+    } finally {
+      setBusy(false);
+    }
   };
-
-  const getSlotStatus = (slotId: string, required: boolean) => {
-    const hasPhoto = uploadedPhotos[slotId];
-    if (hasPhoto) return "success";
-    if (required) return "required";
-    return "optional";
-  };
-
-  const requiredSlots = photoSlots.filter((s) => s.required);
-  const hasAllRequired = requiredSlots.every((slot) => uploadedPhotos[slot.id]);
-  const canUpload = consentAccepted && hasAllRequired && !isUploading;
 
   return (
-    <Card className="shadow-card rounded-2xl">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Camera className="h-5 w-5 text-brand-primary" />
+    <div className="shadow-card rounded-2xl border bg-card">
+      <div className="p-5 border-b">
+        <h3 className="text-base font-medium">
           {isFirstWeek ? "Dein Baseline-Set" : "Dein Wochen-Set"}
-        </CardTitle>
+        </h3>
         <p className="text-sm text-muted-foreground">
           Gleiches Licht, gleicher Abstand, keine Filter
         </p>
-      </CardHeader>
+      </div>
 
-      <CardContent className="space-y-5">
-        {/* Consent Gate */}
-        <div className="rounded-2xl border bg-primary-subtle p-3">
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4"
-              checked={consentAccepted}
-              onChange={(e) => handleConsentToggle(e.target.checked)}
-            />
-            <span className="text-sm">
-              Ich habe die{" "}
-              <a href="/consent" className="underline text-blue-600">
-                Einwilligung & Nutzungsbedingungen
-              </a>{" "}
-              gelesen und stimme zu.
-            </span>
-          </label>
-        </div>
-
-        {/* Foto-Slots */}
+      <div className="p-5 space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          {photoSlots.map((slot) => {
-            const status = getSlotStatus(slot.id, slot.required);
-            const hasPhoto = uploadedPhotos[slot.id];
-
+          {slots.map((s) => {
+            const picked = Boolean(files[s.id]);
             return (
-              <div key={slot.id} className="relative">
-                <label className="block cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handlePhotoSelect(slot.id, file);
-                    }}
-                  />
-                  <div
-                    className={`border-2 border-dashed rounded-2xl p-4 text-center transition-all
-                      ${
-                        status === "success"
-                          ? "border-success bg-success/5"
-                          : status === "required"
-                          ? "border-border hover:border-brand-primary"
-                          : "border-muted hover:border-brand-primary/50"
-                      }`}
-                  >
-                    {hasPhoto ? (
-                      <div className="space-y-2">
-                        <CheckCircle className="h-6 w-6 text-success mx-auto" />
-                        <p className="text-xs font-medium text-success">{slot.label}</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <Camera className="h-6 w-6 text-muted-foreground mx-auto" />
-                        <p className="text-xs font-medium text-foreground">
-                          {slot.label}
-                          {!slot.required && (
-                            <span className="text-muted-foreground"> (optional)</span>
-                          )}
-                        </p>
-                      </div>
-                    )}
+              <label
+                key={s.id}
+                className={`rounded-2xl border-2 border-dashed p-4 text-center cursor-pointer transition ${
+                  picked ? "border-green-500 bg-green-50" : "hover:border-primary"
+                }`}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => onPick(s.id, e.target.files?.[0] || null)}
+                />
+                <div className="space-y-1">
+                  <div className="text-xs font-medium">
+                    {s.label} {!s.required && <span className="text-muted-foreground">(optional)</span>}
                   </div>
-                </label>
-              </div>
+                  <div className="text-xs text-muted-foreground">
+                    {picked ? "Ausgewählt" : "Datei wählen"}
+                  </div>
+                </div>
+              </label>
             );
           })}
         </div>
 
-        {/* Notizen */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Notizen (optional)</label>
-          <Textarea
-            placeholder="Besonderheiten, Änderungen in der Routine, etc..."
+          <label className="text-sm font-medium">Notizen (optional)</label>
+          <textarea
+            className="w-full rounded-xl border p-3 outline-none"
+            placeholder="Besonderheiten, Änderungen in der Routine, etc."
+            rows={3}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="resize-none"
-            rows={3}
           />
         </div>
 
-        <Button
+        <button
           onClick={handleUpload}
-          disabled={!canUpload}
-          className="w-full bg-gradient-primary hover:opacity-90 transition-opacity disabled:opacity-50"
-          size="lg"
+          disabled={busy}
+          className="w-full rounded-xl py-3 bg-gradient-primary text-white font-medium shadow-card disabled:opacity-60"
         >
-          {isUploading ? (
-            <>
-              <Upload className="h-4 w-4 mr-2 animate-spin" />
-              Wird hochgeladen...
-            </>
-          ) : (
-            <>
-              <Upload className="h-4 w-4 mr-2" />
-              Hochladen
-            </>
-          )}
-        </Button>
+          {busy ? "Wird hochgeladen..." : "Hochladen"}
+        </button>
 
-        {!hasAllRequired && (
-          <p className="text-xs text-muted-foreground text-center">
-            Tipp: Für die Analyse brauchen wir Front, linke/rechte Wange und Stirn.
+        {msg && (
+          <p className={`text-sm mt-2 ${msg.kind === "ok" ? "text-green-600" : "text-red-600"}`}>
+            {msg.text}
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
