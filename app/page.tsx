@@ -1,13 +1,13 @@
 // app/page.tsx
-import StatusBanner from "@/components/creator/StatusBanner";
-import UploadCard from "@/components/creator/UploadCard";
-import HistoryCard from "@/components/creator/HistoryCard";
-import CollaborationCard from "@/components/creator/CollaborationCard";
-import LevelsWidget from "@/components/creator/LevelsWidget";
+import { StatusBanner } from "@/components/creator/StatusBanner";
+import { UploadCard } from "@/components/creator/UploadCard";
+import { HistoryCard } from "@/components/creator/HistoryCard";
+import { CollaborationCard } from "@/components/creator/CollaborationCard";
+import { LevelsWidget } from "@/components/creator/LevelsWidget";
 import { getWeekMeta } from "@/lib/weeks";
 
 export default function Page() {
-  // MVP: Startdatum hardcodiert – später aus DB (Programmbeginn des Creators)
+  // MVP: Startdatum hartkodiert – später aus der DB (Programmbeginn des Creators)
   const programStart = "2025-01-01";
 
   const { currentWeek, isFirstWeek, endDateLabel } = getWeekMeta(programStart);
@@ -20,9 +20,13 @@ export default function Page() {
           endDate={endDateLabel}
           isFirstWeek={isFirstWeek}
         />
+
         <UploadCard weekNumber={currentWeek} isFirstWeek={isFirstWeek} />
+
         <HistoryCard />
+
         <CollaborationCard />
+
         <LevelsWidget />
       </div>
     </main>
