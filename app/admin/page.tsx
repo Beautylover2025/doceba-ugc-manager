@@ -1,247 +1,189 @@
-// app/admin/page.tsx
-export const dynamic = 'force-dynamic'
+import Image from "next/image";
+import Link from "next/link";
+import { serverClient } from "@/lib/supabaseServer";
+import { requireAdmin } from "@/lib/auth";
+import { Users, Upload, AlertCircle } from "lucide-react";
 
-import { requireAdmin } from '@/lib/auth'
-import { serverClient } from '@/lib/supabaseServer'
-import Link from 'next/link'
+export const revalidate = 0; // immer frische Daten
 
-// --------- kleine Helfer ----------
-function clsx(...xs: Array<string | false | null | undefined>) {
-  return xs.filter(Boolean).join(' ')
-}
-function fmtDate(iso?: string | null) {
-  if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return iso
-  }
-}
-const pillStyles: Record<string, string> = {
-  approved: 'bg-emerald-100 text-emerald-700 ring-emerald-600/20',
-  submitted: 'bg-blue-100 text-blue-700 ring-blue-600/20',
-  needs_changes: 'bg-amber-100 text-amber-700 ring-amber-600/20',
-  rejected: 'bg-rose-100 text-rose-700 ring-rose-600/20',
-  partial: 'bg-gray-100 text-gray-700 ring-gray-600/20',
-  missing: 'bg-zinc-100 text-zinc-700 ring-zinc-600/20',
-}
+type Row = {
+  creator_id: string;
+  program_id: string | null;
+  week_index: number | null;
+  status: string | null;
+  before_path: string | null;
+  after_path: string | null;
+  created_at: string | null;
+};
 
-type UploadRow = {
-  id: string
-  creator_id: string
-  program_id: string
-  week_index: number
-  status: string | null
-  created_at: string
-  before_path: string | null
-  after_path: string | null
-}
-
-// Fallback-Icons (ohne Dependencies), fest dimensioniert
-function UsersIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      fill="none"
-      strokeWidth="2"
-      style={{ width: 24, height: 24 }}
-      className="shrink-0"
-    >
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  )
-}
-function UploadIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      fill="none"
-      strokeWidth="2"
-      style={{ width: 24, height: 24 }}
-      className="shrink-0"
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-  )
-}
-function AlertIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      fill="none"
-      strokeWidth="2"
-      style={{ width: 24, height: 24 }}
-      className="shrink-0"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="8" x2="12" y2="12" />
-      <line x1="12" y1="16" x2="12.01" y2="16" />
-    </svg>
-  )
-}
-
-// --------- UI-Bausteine (inline, keine extra Files) ----------
-function KPICard(props: { title: string; value: string | number; variant?: 'primary' | 'success' | 'warning'; icon: React.ReactNode }) {
-  const border =
-    props.variant === 'success'
-      ? 'border-emerald-200'
-      : props.variant === 'warning'
-      ? 'border-amber-200'
-      : 'border-blue-200'
-  const badge =
-    props.variant === 'success'
-      ? 'text-emerald-700'
-      : props.variant === 'warning'
-      ? 'text-amber-700'
-      : 'text-blue-700'
-  return (
-    <div className={clsx('rounded-2xl border bg-white p-5 shadow-sm', border)}>
-      <div className="flex items-center gap-3">
-        <div className={clsx('rounded-xl bg-gray-100 p-2', badge)}>{props.icon}</div>
-        <div className="min-w-0">
-          <div className="text-sm text-gray-500">{props.title}</div>
-          <div className="truncate text-2xl font-semibold">{props.value}</div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function StatusPill({ status }: { status: string | null }) {
-  const key = (status ?? 'partial').toLowerCase()
-  return (
-    <span
-      className={clsx(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
-        pillStyles[key] ?? pillStyles['partial'],
-      )}
-    >
-      {status ?? '—'}
-    </span>
-  )
-}
-
-function Thumb({
-  path,
-  alt,
-}: {
-  path: string | null
-  alt: string
-}) {
-  if (!path) return <span className="text-gray-400">Kein Bild</span>
-  const src = `/api/image?path=${encodeURIComponent(path)}`
-  const dl = `/api/image?path=${encodeURIComponent(path)}&download=1`
-  return (
-    <div className="flex items-center gap-3">
-      {/* Feste Größe damit nichts „explodiert“ – selbst ohne Tailwind */}
-      <img
-        src={src}
-        alt={alt}
-        style={{ width: 64, height: 64 }}
-        className="h-16 w-16 rounded-md border object-cover"
-      />
-      <a
-        href={dl}
-        className="text-sm font-medium text-blue-600 hover:underline"
-        target="_blank"
-        rel="noreferrer"
-      >
-        Download
-      </a>
-    </div>
-  )
-}
-
-// --------- PAGE ----------
 export default async function AdminPage() {
-  await requireAdmin()
+  // Nur Admins reinlassen
+  await requireAdmin();
 
-  const supabase = serverClient()
+  const supabase = serverClient();
 
-  // KPI-Zahlen
-  const [{ count: creatorCount }, { count: uploadCount }, { count: missingCount }] = await Promise.all([
-    supabase.from('profiles').select('id', { head: true, count: 'exact' }).eq('role', 'creator'),
-    supabase.from('uploads').select('id', { head: true, count: 'exact' }),
-    supabase.from('uploads').select('id', { head: true, count: 'exact' }).eq('status', 'missing'),
-  ])
+  const { data, error } = await supabase
+    .from("uploads")
+    .select("creator_id, program_id, week_index, status, before_path, after_path, created_at")
+    .order("created_at", { ascending: false })
+    .limit(200);
 
-  // Tabellendaten
-  const { data: rows } = await supabase
-    .from('uploads')
-    .select('id, creator_id, program_id, week_index, status, created_at, before_path, after_path')
-    .order('created_at', { ascending: false })
-    .limit(200)
+  if (error) {
+    throw new Error(error.message);
+  }
+  const rows: Row[] = data ?? [];
+
+  // KPIs
+  const totalUploads = rows.length;
+  const uniqueCreators = new Set(rows.map((r) => r.creator_id)).size;
+  const missingCount =
+    rows.filter((r) => (r.status ?? "").toLowerCase() !== "complete").length;
+
+  const dt = new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" });
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
+    <main className="container-lg py-8">
       {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900">Upload-Verwaltung</h1>
-        <p className="text-gray-500">Übersicht über alle Creator-Uploads und deren Status.</p>
-      </div>
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Upload-Verwaltung</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Übersicht über alle Creator-Uploads und deren Status.
+        </p>
+      </header>
 
-      {/* KPIs */}
-      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <KPICard title="Creator gesamt" value={creatorCount ?? 0} variant="primary" icon={<UsersIcon />} />
-        <KPICard title="Uploads gesamt" value={uploadCount ?? 0} variant="success" icon={<UploadIcon />} />
-        <KPICard title="Fehlende Uploads" value={missingCount ?? 0} variant="warning" icon={<AlertIcon />} />
-      </div>
+      {/* KPI Cards */}
+      <section className="mb-6 grid gap-4 sm:grid-cols-3">
+        <div className="card">
+          <div className="card-pad flex items-center gap-3">
+            <div className="rounded-lg bg-slate-100 p-2">
+              <Users className="h-5 w-5 text-slate-700" />
+            </div>
+            <div className="flex-1">
+              <div className="text-xs uppercase text-slate-500">Creator gesamt</div>
+              <div className="mt-1 text-xl font-semibold">{uniqueCreators}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-pad flex items-center gap-3">
+            <div className="rounded-lg bg-slate-100 p-2">
+              <Upload className="h-5 w-5 text-slate-700" />
+            </div>
+            <div className="flex-1">
+              <div className="text-xs uppercase text-slate-500">Uploads gesamt</div>
+              <div className="mt-1 text-xl font-semibold">{totalUploads}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-pad flex items-center gap-3">
+            <div className="rounded-lg bg-slate-100 p-2">
+              <AlertCircle className="h-5 w-5 text-slate-700" />
+            </div>
+            <div className="flex-1">
+              <div className="text-xs uppercase text-slate-500">Fehlende Uploads</div>
+              <div className="mt-1 text-xl font-semibold">{missingCount}</div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Tabelle */}
-      <div className="mt-8 overflow-auto rounded-2xl border bg-white shadow-sm">
-        <table className="min-w-full text-sm">
-          <thead className="sticky top-0 bg-gray-50 text-left">
-            <tr className="text-gray-600">
-              <th className="p-3 font-medium">Creator-ID</th>
-              <th className="p-3 font-medium">Programm-ID</th>
-              <th className="p-3 font-medium">Woche</th>
-              <th className="p-3 font-medium">Status</th>
-              <th className="p-3 font-medium">Vorher-Bild</th>
-              <th className="p-3 font-medium">Nachher-Bild</th>
-              <th className="p-3 font-medium">Erstellt</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(rows ?? []).map((r: UploadRow) => (
-              <tr key={r.id} className="border-t">
-                <td className="p-3 font-mono text-gray-900">{r.creator_id?.slice(0, 8)}</td>
-                <td className="p-3 font-mono text-gray-900">{r.program_id?.slice(0, 8)}</td>
-                <td className="p-3 text-center">{r.week_index ?? '—'}</td>
-                <td className="p-3"><StatusPill status={r.status} /></td>
-                <td className="p-3">
-                  <Thumb path={r.before_path} alt={`Vorher ${r.creator_id} W${r.week_index}`} />
-                </td>
-                <td className="p-3">
-                  <Thumb path={r.after_path} alt={`Nachher ${r.creator_id} W${r.week_index}`} />
-                </td>
-                <td className="p-3 text-gray-600">{fmtDate(r.created_at)}</td>
-              </tr>
-            ))}
-            {(!rows || rows.length === 0) && (
+      <section className="card overflow-hidden">
+        <div className="card-pad overflow-x-auto">
+          <table className="tbl">
+            <thead>
               <tr>
-                <td className="p-6 text-center text-gray-500" colSpan={7}>
-                  Noch keine Uploads vorhanden.
-                </td>
+                <th>Creator-ID</th>
+                <th>Programm-ID</th>
+                <th>Woche</th>
+                <th>Status</th>
+                <th>Vorher-Bild</th>
+                <th>Nachher-Bild</th>
+                <th>Erstellt</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const isComplete = (r.status ?? "").toLowerCase() === "complete";
+                const beforeUrl = r.before_path
+                  ? `/api/image?path=${encodeURIComponent(r.before_path)}`
+                  : null;
+                const afterUrl = r.after_path
+                  ? `/api/image?path=${encodeURIComponent(r.after_path)}`
+                  : null;
 
-      {/* Zurück zum Creator-Bereich (optional) */}
-      <div className="mt-6 text-right">
-        <Link href="/app" className="text-sm font-medium text-blue-600 hover:underline">
+                return (
+                  <tr key={`${r.creator_id}-${i}`}>
+                    <td className="font-mono text-[13px]">{r.creator_id}</td>
+                    <td className="font-mono text-[13px]">{r.program_id ?? "–"}</td>
+                    <td>{r.week_index ?? "–"}</td>
+                    <td>
+                      {isComplete ? (
+                        <span className="badge badge-ok">complete</span>
+                      ) : (
+                        <span className="badge badge-warn">{r.status ?? "unbekannt"}</span>
+                      )}
+                    </td>
+                    <td>
+                      {beforeUrl ? (
+                        <div className="flex items-center gap-3">
+                          {/* Thumbnail */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={beforeUrl}
+                            alt="Vorher-Bild"
+                            className="h-12 w-12 rounded-md object-cover ring-1 ring-black/10"
+                          />
+                          <Link
+                            className="text-blue-600 underline-offset-2 hover:underline"
+                            href={`${beforeUrl}&download=1`}
+                          >
+                            Download
+                          </Link>
+                        </div>
+                      ) : (
+                        <span className="badge badge-muted">Kein Bild</span>
+                      )}
+                    </td>
+                    <td>
+                      {afterUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={afterUrl}
+                          alt="Nachher-Bild"
+                          className="h-12 w-12 rounded-md object-cover ring-1 ring-black/10"
+                        />
+                      ) : (
+                        <span className="badge badge-muted">Kein Bild</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap text-slate-700">
+                      {r.created_at ? dt.format(new Date(r.created_at)) : "–"}
+                    </td>
+                  </tr>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-slate-500">
+                    Noch keine Uploads vorhanden.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Link zurück zum Creator-Bereich */}
+      <div className="container-lg mt-4 px-0">
+        <Link href="/app" className="text-blue-600 underline-offset-2 hover:underline">
           Zum Creator-Dashboard
         </Link>
       </div>
     </main>
-  )
+  );
 }
