@@ -2,18 +2,125 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Container & Card wie im Lovable-Entwurf */
+/* =========================
+   Doceba Design Tokens
+   ========================= */
+@layer base {
+  :root {
+    /* Grundfarben */
+    --background: 0 0% 99%;
+    --foreground: 224 7% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 7% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 7% 12%;
+
+    /* Brand / Primary (Doceba Blau) */
+    --primary: 221 83% 53%;             /* ~#2B86FF */
+    --primary-foreground: 210 40% 98%;
+
+    /* Sekundär / Muted */
+    --secondary: 220 14% 97%;
+    --secondary-foreground: 224 7% 12%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    /* Akzent & Ränder */
+    --accent: 220 14% 96%;
+    --accent-foreground: 224 7% 12%;
+
+    --border: 220 14% 90%;
+    --input: 220 14% 90%;
+    --ring: 221 83% 53%;
+
+    /* Statusfarben */
+    --success: 142 70% 36%;             /* Grün */
+    --success-foreground: 0 0% 100%;
+    --warning: 34 94% 50%;              /* Orange */
+    --warning-foreground: 24 94% 9%;
+
+    /* Zusatz für dezente Flächen/Gradients */
+    --brand-bg: 220 60% 99%;
+    --primary-subtle: 221 100% 96%;
+
+    /* Radius für shadcn */
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222 8% 8%;
+    --foreground: 210 40% 98%;
+    --card: 222 8% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 8% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 221 83% 60%;
+    --primary-foreground: 222 8% 8%;
+    --secondary: 222 8% 14%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 222 8% 14%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 222 8% 14%;
+    --accent-foreground: 210 40% 98%;
+    --border: 222 8% 18%;
+    --input: 222 8% 18%;
+    --ring: 221 83% 60%;
+    --success: 142 70% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 34 94% 50%;
+    --warning-foreground: 24 94% 9%;
+    --brand-bg: 222 8% 12%;
+    --primary-subtle: 221 100% 18%;
+  }
+
+  /* Grundtypografie/Flächen via Tokens */
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground antialiased; }
+}
+
+/* =========================
+   Utilities & Helfer
+   ========================= */
+@layer utilities {
+  /* Doceba Banner-Gradient (StatusBanner) */
+  .bg-gradient-primary {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--primary)) 0%,
+      hsl(var(--primary) / 0.92) 45%,
+      hsl(var(--primary) / 0.85) 100%
+    );
+  }
+
+  /* Sehr dezente Seitenfläche */
+  .bg-gradient-subtle {
+    background-image: radial-gradient(
+      1200px 600px at 20% -10%,
+      hsl(var(--primary-subtle)) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      1200px 600px at 120% 10%,
+      hsl(var(--primary-subtle)) 0%,
+      transparent 60%
+    );
+    background-color: hsl(var(--brand-bg));
+  }
+
+  /* Karte/Schatten wie in Lovable */
+  .shadow-card {
+    box-shadow:
+      0 1px 2px rgba(16,24,40,.04),
+      0 8px 24px rgba(16,24,40,.06);
+  }
+}
+
+/* Optional – kleine Glättung für Buttons/Badges */
 @layer components {
-  .container-lg { @apply mx-auto max-w-6xl px-4 sm:px-6 lg:px-8; }
-  .card        { @apply rounded-xl bg-white shadow-sm ring-1 ring-black/5; }
-  .card-pad    { @apply p-5 sm:p-6; }
-
-  .badge       { @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium; }
-  .badge-ok    { @apply border-green-200 bg-green-50 text-green-700; }
-  .badge-warn  { @apply border-amber-200 bg-amber-50 text-amber-700; }
-  .badge-muted { @apply border-slate-200 bg-slate-50 text-slate-600; }
-
-  .tbl         { @apply w-full text-sm; }
-  .tbl thead th{ @apply whitespace-nowrap border-b bg-slate-50 px-3 py-2 text-left font-medium text-slate-700; }
-  .tbl tbody td{ @apply border-b px-3 py-3 align-middle text-slate-800; }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
 }
