@@ -1,30 +1,41 @@
-// app/page.tsx
-export const dynamic = 'force-dynamic'
+import { StatusBanner } from "@/components/creator/StatusBanner";
+import { UploadCard } from "@/components/creator/UploadCard";
+import { HistoryCard } from "@/components/creator/HistoryCard";
+import { CollaborationCard } from "@/components/creator/CollaborationCard";
+import { LevelsWidget } from "@/components/creator/LevelsWidget";
+import { VideoEmbed } from "@/components/creator/VideoEmbed";
 
-import { redirect } from 'next/navigation'
-import { serverClient } from '@/lib/supabaseServer'
+export default function Page() {
+  // Mock-Daten – später per API/Supabase
+  const currentWeek = 1;
+  const endDate = "22.01.2024";
+  const isFirstWeek = currentWeek === 1;
 
-export default async function Index() {
-  const supabase = serverClient()
+  return (
+    <div className="min-h-screen">
+      <div className="w-full max-w-5xl mx-auto px-4 py-8 space-y-8">
+        {/* Status-Banner */}
+        <StatusBanner
+          weekNumber={currentWeek}
+          endDate={endDate}
+          isFirstWeek={isFirstWeek}
+        />
 
-  // 1) User holen
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
-  }
+        {/* Upload-Bereich */}
+        <UploadCard weekNumber={currentWeek} isFirstWeek={isFirstWeek} />
 
-  // 2) Rolle aus profiles lesen
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
+        {/* Verlauf */}
+        <HistoryCard />
 
-  // 3) Routing nach Rolle
-  if (profile?.role === 'admin') {
-    redirect('/admin')
-  }
+        {/* Zusammenarbeit / Do's & Don'ts / FAQ */}
+        <CollaborationCard />
 
-  // Fallback: Creator
-  redirect('/app')
+        {/* Level/Gamification (Platzhalter) */}
+        <LevelsWidget />
+
+        {/* Kurz erklärt – Video */}
+        <VideoEmbed src="https://player.vimeo.com/video/76979871" />
+      </div>
+    </div>
+  );
 }
