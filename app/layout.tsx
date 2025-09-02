@@ -1,15 +1,20 @@
-import './globals.css'
-import type { ReactNode } from 'react'
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
 
-export const metadata = {
-  title: 'Doceba UGC Manager',
-  description: 'MVP Verwaltung'
-}
+const inter = Inter({ subsets: ["latin"] });
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export const metadata: Metadata = {
+  title: "Doceba UGC Manager",
+  description: "Admin- und Creator-Dashboard für UGC-Uploads",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="de">
-      <body>{children}</body>
+      <body className={`${inter.className} bg-slate-50 text-slate-900 antialiased`}>
+        {children}
+      </body>
     </html>
-  )
+  );
 }
