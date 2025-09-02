@@ -18,7 +18,7 @@
     --popover-foreground: 224 7% 12%;
 
     /* Brand / Primary (Doceba Blau) */
-    --primary: 221 83% 53%;             /* ~#2B86FF */
+    --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
 
     /* Sekundär / Muted */
@@ -37,53 +37,65 @@
     --ring: 221 83% 53%;
 
     /* Statusfarben */
-    --success: 142 70% 36%;             /* Grün */
+    --success: 142 70% 36%;
     --success-foreground: 0 0% 100%;
-    --warning: 34 94% 50%;              /* Orange */
+
+    --warning: 34 94% 50%;
     --warning-foreground: 24 94% 9%;
 
-    /* Zusatz für dezente Flächen/Gradients */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Zusatzflächen/Gradients */
     --brand-bg: 220 60% 99%;
     --primary-subtle: 221 100% 96%;
 
-    /* Radius für shadcn */
+    /* Radius für Komponenten */
     --radius: 0.75rem;
   }
 
   .dark {
     --background: 222 8% 8%;
     --foreground: 210 40% 98%;
+
     --card: 222 8% 10%;
     --card-foreground: 210 40% 98%;
+
     --popover: 222 8% 10%;
     --popover-foreground: 210 40% 98%;
+
     --primary: 221 83% 60%;
     --primary-foreground: 222 8% 8%;
+
     --secondary: 222 8% 14%;
     --secondary-foreground: 210 40% 98%;
+
     --muted: 222 8% 14%;
     --muted-foreground: 215 20% 65%;
+
     --accent: 222 8% 14%;
     --accent-foreground: 210 40% 98%;
+
     --border: 222 8% 18%;
     --input: 222 8% 18%;
     --ring: 221 83% 60%;
+
     --success: 142 70% 36%;
     --success-foreground: 0 0% 100%;
+
     --warning: 34 94% 50%;
     --warning-foreground: 24 94% 9%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
     --brand-bg: 222 8% 12%;
     --primary-subtle: 221 100% 18%;
   }
 
-  /* Grundtypografie/Flächen via Tokens */
-  *, ::before, ::after { border-color: hsl(var(--border)); }
-  body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+  /* Basisanwendung der Tokens */
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground antialiased; }
 }
 
 /* =========================
@@ -100,7 +112,7 @@
     );
   }
 
-  /* Sehr dezente Seitenfläche */
+  /* Dezente Seitenfläche */
   .bg-gradient-subtle {
     background-image:
       radial-gradient(1200px 600px at 20% -10%, hsl(var(--primary-subtle)) 0%, transparent 60%),
@@ -108,15 +120,14 @@
     background-color: hsl(var(--brand-bg));
   }
 
-  /* Karte/Schatten wie in Lovable */
+  /* Karten-Schatten wie im Mock */
   .shadow-card {
     box-shadow:
-      0 1px 2px rgba(16, 24, 40, 0.04),
-      0 8px 24px rgba(16, 24, 40, 0.06);
+      0 1px 2px rgba(16,24,40,.04),
+      0 8px 24px rgba(16,24,40,.06);
   }
 }
 
-/* Optional – kleine Glättung für Buttons/Badges */
 @layer components {
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
