@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* kleine Grund-Resets/Verbesserungen */
+html, body {
+  height: 100%;
+}
+
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* Tabellen in der Admin-Ansicht hübscher */
+table {
+  @apply w-full border-collapse text-sm;
+}
+th, td {
+  @apply border-b border-gray-200 px-3 py-2 align-middle;
+}
+th {
+  @apply text-left font-medium text-gray-600;
+}
+
+/* Mini-Badge für Status */
+.badge {
+  @apply inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700;
+}
