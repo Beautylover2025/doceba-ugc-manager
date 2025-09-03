@@ -36,9 +36,9 @@ export default function LoginPage() {
     } catch (e) {
       console.error('[DEBUG] health fetch error', e);
       console.error('[DEBUG] Error details:', {
-        name: e?.name,
-        message: e?.message,
-        stack: e?.stack
+        name: (e as Error)?.name,
+        message: (e as Error)?.message,
+        stack: (e as Error)?.stack
       });
     }
   }
