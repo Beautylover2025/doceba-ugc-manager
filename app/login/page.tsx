@@ -17,18 +17,47 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    try {
+      // Sign in with email and password
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password 
+      })
 
-    setLoading(false)
-    if (error) {
-      setError(error.message)
-      return
+      if (authError) {
+        setError(authError.message)
+        setLoading(false)
+        return
+      }
+
+      // If sign in successful, upsert profile
+      if (authData.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert(
+            { 
+              id: authData.user.id, 
+              email: authData.user.email 
+            },
+            { 
+              onConflict: 'id' 
+            }
+          )
+
+        if (profileError) {
+          console.error('Profile upsert error:', profileError)
+          // Don't block login for profile errors, just log them
+        }
+      }
+
+      // Redirect to home page
+      router.replace('/')
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.')
+      console.error('Login error:', err)
+    } finally {
+      setLoading(false)
     }
-
-    // WICHTIG:
-    // nicht direkt zu /app springen, sondern zur Root (/),
-    // dort entscheidet app/page.tsx anhand der Rolle.
-    router.replace('/')
   }
 
   return (
