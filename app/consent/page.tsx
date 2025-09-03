@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, CheckCircle } from 'lucide-react';
 
 export default function ConsentPage() {
@@ -122,9 +122,9 @@ export default function ConsentPage() {
                 <CheckCircle className="w-8 h-8 text-green-600" />
               </div>
               <CardTitle className="text-2xl">Einwilligung bereits erteilt</CardTitle>
-              <CardDescription>
+              <p className="text-sm text-muted-foreground">
                 Du hast bereits der Nutzung deiner Bilder zugestimmt.
-              </CardDescription>
+              </p>
             </CardHeader>
             <CardContent className="text-center">
               <Button onClick={() => router.push('/upload/1')} className="w-full">
@@ -146,9 +146,9 @@ export default function ConsentPage() {
               <Shield className="w-6 h-6 text-primary" />
               <CardTitle className="text-2xl">Einwilligung & Nutzungsbedingungen</CardTitle>
             </div>
-            <CardDescription>
+            <p className="text-sm text-muted-foreground">
               Um Fotos hochladen zu können, musst du zuerst der Nutzung deiner Bilder zustimmen.
-            </CardDescription>
+            </p>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="prose prose-sm max-w-none">
