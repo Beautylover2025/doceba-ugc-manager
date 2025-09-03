@@ -9,6 +9,23 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { getCurrentWeek } from "@/lib/weeks";
 
+async function finalizeStatus(uploadId: string, toast: any) {
+  try {
+    const { data, error } = await supabase.rpc('finalize_upload_status', {
+      p_upload_id: uploadId,
+    });
+    if (error) {
+      console.error('[FINALIZE STATUS] RPC error', error);
+      toast({ title: "Fehler", description: "Status-Update fehlgeschlagen (siehe Konsole).", variant: "destructive" });
+      return;
+    }
+    console.log('[FINALIZE STATUS] OK');
+    // optional: UI/History refreshen, falls du eine Liste rechts neu laden willst
+  } catch (e) {
+    console.error('[FINALIZE STATUS] exception', e);
+  }
+}
+
 interface PhotoSlot { id: string; label: string; required: boolean; }
 
 const photoSlots: PhotoSlot[] = [
@@ -41,17 +58,33 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
         return;
       }
 
-      const { data, error } = await supabase
-        .from('consents')
-        .select('*')
-        .eq('creator_id', user.id)
-        .single();
+      // Zunächst localStorage verwenden (MVP)
+      const consentKey = `consent_${user.id}`;
+      const hasLocalConsent = localStorage.getItem(consentKey) === 'true';
+      
+      if (hasLocalConsent) {
+        setHasConsent(true);
+        setIsCheckingConsent(false);
+        return;
+      }
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('Error checking consent:', error);
+      // Fallback: Versuche Datenbank-Abfrage (falls Tabelle existiert)
+      try {
+        const { data, error } = await supabase
+          .from('consents')
+          .select('*')
+          .eq('creator_id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+          console.log('Consents table not available, using localStorage fallback');
+          setHasConsent(false);
+        } else {
+          setHasConsent(!!data);
+        }
+      } catch (dbError) {
+        console.log('Database consent check failed, using localStorage fallback');
         setHasConsent(false);
-      } else {
-        setHasConsent(!!data);
       }
     } catch (error) {
       console.error('Error checking consent:', error);
@@ -69,21 +102,27 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
         return;
       }
 
-      const { error } = await supabase
-        .from('consents')
-        .insert({
-          creator_id: user.id,
-          version: 'v1'
-        });
-
-      if (error) {
-        console.error('Error inserting consent:', error);
-        toast({ title: "Fehler", description: "Einwilligung konnte nicht gespeichert werden", variant: "destructive" });
-        return;
-      }
-
+      // Zunächst localStorage verwenden (MVP)
+      const consentKey = `consent_${user.id}`;
+      localStorage.setItem(consentKey, 'true');
       setHasConsent(true);
       toast({ title: "Einwilligung erteilt", description: "Du kannst jetzt Fotos hochladen" });
+
+      // Fallback: Versuche auch in Datenbank zu speichern (falls Tabelle existiert)
+      try {
+        const { error } = await supabase
+          .from('consents')
+          .insert({
+            creator_id: user.id,
+            version: 'v1'
+          });
+
+        if (error) {
+          console.log('Database consent save failed, but localStorage saved successfully');
+        }
+      } catch (dbError) {
+        console.log('Database consent save failed, but localStorage saved successfully');
+      }
     } catch (error) {
       console.error('Error handling consent:', error);
       toast({ title: "Fehler", description: "Einwilligung konnte nicht gespeichert werden", variant: "destructive" });
