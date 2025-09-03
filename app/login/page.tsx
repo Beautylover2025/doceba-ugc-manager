@@ -17,11 +17,29 @@ export default function LoginPage() {
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     console.log('[DEBUG] SUPABASE_URL', url?.slice(0, 25), '…');
     console.log('[DEBUG] ANON_KEY length', key?.length);
+    console.log('[DEBUG] Full URL for health check:', `${url}/auth/v1/health`);
+    
     try {
-      const r = await fetch(`${url}/auth/v1/health`, { headers: { apikey: key }});
-      console.log('[DEBUG] /auth/v1/health', r.status, await r.text().catch(()=>''));
+      const r = await fetch(`${url}/auth/v1/health`, { 
+        headers: { 
+          apikey: key,
+          'Content-Type': 'application/json'
+        },
+        method: 'GET'
+      });
+      const responseText = await r.text().catch(() => 'Could not read response text');
+      console.log('[DEBUG] /auth/v1/health', r.status, responseText);
+      
+      if (!r.ok) {
+        console.error('[DEBUG] Health check failed:', r.status, r.statusText);
+      }
     } catch (e) {
       console.error('[DEBUG] health fetch error', e);
+      console.error('[DEBUG] Error details:', {
+        name: e?.name,
+        message: e?.message,
+        stack: e?.stack
+      });
     }
   }
 
@@ -70,6 +88,13 @@ export default function LoginPage() {
       router.replace('/')
     } catch (e: any) {
       console.error('[LOGIN ERROR]', e);
+      console.error('[LOGIN ERROR] Details:', {
+        name: e?.name,
+        message: e?.message,
+        stack: e?.stack,
+        cause: e?.cause
+      });
+      
       const errorMessage = e?.message || e?.toString() || 'An unexpected error occurred. Please try again.';
       setError(`Login-Fehler: ${errorMessage}`);
       alert(`Login-Fehler: ${errorMessage}`);
