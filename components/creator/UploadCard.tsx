@@ -48,6 +48,44 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
     return data.user?.id ?? null;
   };
 
+  const pingStorage = async (creatorId: string): Promise<void> => {
+    try {
+      console.log('[STORAGE PING] Testing storage access for creator:', creatorId);
+      const { data, error } = await supabase.storage.from('ugc').list(`creator/${creatorId}`, { limit: 1 });
+      if (error) {
+        console.error('[STORAGE PING] Error:', error.message);
+      } else {
+        console.log('[STORAGE PING] Success - can access storage, found', data?.length || 0, 'items');
+      }
+    } catch (e) {
+      console.error('[STORAGE PING] Exception:', e);
+    }
+  };
+
+  const debugUpload = async (slot: string, path: string, file: File): Promise<{ data: any; error: any }> => {
+    console.log('[UPLOAD] Starting upload for slot:', slot);
+    console.log('[UPLOAD] Path:', path);
+    console.log('[UPLOAD] File size:', file.size, 'bytes');
+    console.log('[UPLOAD] File type:', file.type);
+
+    const { data, error } = await supabase
+      .storage
+      .from('ugc')
+      .upload(path, file, { 
+        upsert: true, 
+        contentType: file.type ?? 'image/png' 
+      });
+
+    if (error) {
+      console.error('[UPLOAD ERROR]', slot, error.message);
+      alert('Fehler: Upload fehlgeschlagen bei "' + slot + '"');
+    } else {
+      console.log('[UPLOAD SUCCESS]', slot, 'uploaded to:', data?.path);
+    }
+
+    return { data, error };
+  };
+
   const fileNameFor = (slotId: string) => {
     switch (slotId) {
       case "front":       return "front.png";
@@ -80,49 +118,87 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
         alert(msg);
         return;
       }
-      if (!programId) {
+
+      // Storage-Diagnose vor Upload
+      await pingStorage(userId);
+
+      // Hole program_id aus v_compliance oder fallback zu profiles
+      let finalProgramId = programId;
+      if (!finalProgramId) {
+        console.log('[UPLOAD] No program_id from v_compliance, trying profiles fallback');
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('program_default_id')
+          .eq('id', userId)
+          .single();
+        
+        if (profileError) {
+          console.error('[UPLOAD] Profile fallback error:', profileError);
+        } else {
+          finalProgramId = profileData?.program_default_id;
+          console.log('[UPLOAD] Using program_default_id from profiles:', finalProgramId);
+        }
+      }
+
+      if (!finalProgramId) {
         const msg = "Kein Programm hinterlegt. Bitte an Support/Admin wenden.";
         toast({ title: "Kein Programm", description: msg, variant: "destructive" });
         alert(msg);
         return;
       }
 
-      const prefix = `creator/${userId}/program/${programId}/week-${weekNumber}`;
-
+      // Korrekter Pfad: creator/{creatorId}/week-{weekIndex}/{slot}.png
       const photos: Record<string, string | null> = {
         front: null, "left-cheek": null, "right-cheek": null, forehead: null, chin: null,
       };
 
+      // Upload aller Fotos mit detailliertem Logging
       for (const slot of photoSlots) {
         const f = uploadedPhotos[slot.id];
         if (!f) continue;
-        const path = `${prefix}/${fileNameFor(slot.id)}`;
-        const { error: upErr } = await supabase.storage.from("ugc").upload(path, f, { upsert: true });
-        if (upErr) {
-          console.error("Upload error", slot.id, upErr);
+        
+        const path = `creator/${userId}/week-${weekNumber}/${slot.id}.png`;
+        const { data, error } = await debugUpload(slot.id, path, f);
+        
+        if (error) {
           throw new Error(`Upload fehlgeschlagen bei "${slot.label}"`);
         }
         photos[slot.id] = path;
       }
 
+      // Prüfe ob alle erforderlichen Slots erfolgreich hochgeladen wurden
       const requiredCount = requiredSlots.length;
       const uploadedRequired = requiredSlots.filter((s) => !!photos[s.id]).length;
       const status: "complete" | "partial" = uploadedRequired === requiredCount ? "complete" : "partial";
 
-      const { error: insErr } = await supabase.from("uploads").insert({
+      console.log('[UPLOAD] All uploads successful, inserting into database...');
+      console.log('[UPLOAD] Insert data:', {
         creator_id: userId,
-        program_id: programId,                // ⬅️ jetzt gesetzt
+        program_id: finalProgramId,
         week_index: weekNumber,
         before_path: photos["front"],
-        after_path: photos["forehead"],       // ⬅️ sinnvoller Platzhalter
-        note,
+        after_path: photos["forehead"],
         status,
+        note
       });
 
+      // DB-Insert in public.uploads
+      const { data: insertData, error: insErr } = await supabase.from("uploads").insert({
+        creator_id: userId,
+        program_id: finalProgramId,
+        week_index: weekNumber,
+        before_path: photos["front"],
+        after_path: photos["forehead"],
+        note,
+        status,
+      }).select();
+
       if (insErr) {
-        console.error("insert uploads error", insErr);
-        throw new Error(insErr.message);
+        console.error('[UPLOAD] Insert error:', insErr);
+        throw new Error(`Datenbank-Fehler: ${insErr.message}`);
       }
+
+      console.log('[UPLOAD] Database insert successful:', insertData);
 
       toast({
         title: "Upload erfolgreich",
