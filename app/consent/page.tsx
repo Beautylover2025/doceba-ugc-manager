@@ -6,6 +6,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, CheckCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ConsentPage() {
   const [hasConsent, setHasConsent] = useState<boolean | null>(null);
@@ -13,6 +14,7 @@ export default function ConsentPage() {
   const [isSaving, setIsSaving] = useState(false);
   const supabase = createClientComponentClient();
   const router = useRouter();
+  const { toast } = useToast();
 
   useEffect(() => {
     checkConsent();
@@ -26,9 +28,10 @@ export default function ConsentPage() {
         return;
       }
 
-      // Prüfe localStorage
+      // Prüfe localStorage (beide Formate unterstützen)
       const consentKey = `consent_${user.id}`;
-      const hasLocalConsent = localStorage.getItem(consentKey) === 'true';
+      const hasLocalConsent = localStorage.getItem(consentKey) === 'true' || 
+                              localStorage.getItem('consent_v1') === 'true';
       
       if (hasLocalConsent) {
         setHasConsent(true);
@@ -71,31 +74,47 @@ export default function ConsentPage() {
         return;
       }
 
-      // Speichere in localStorage
-      const consentKey = `consent_${user.id}`;
-      localStorage.setItem(consentKey, 'true');
-      setHasConsent(true);
+      // 1. Versuche zuerst RPC accept_consent aufzurufen
+      const { error } = await supabase.rpc('accept_consent', { p_version: 'v1' });
 
-      // Fallback: Versuche auch in Datenbank zu speichern
-      try {
-        const { error } = await supabase
-          .from('consents')
-          .insert({
-            creator_id: user.id,
-            version: 'v1'
-          });
-
-        if (error) {
-          console.log('Database consent save failed, but localStorage saved successfully');
-        }
-      } catch (dbError) {
-        console.log('Database consent save failed, but localStorage saved successfully');
+      if (!error) {
+        // Erfolg: RPC funktioniert
+        toast({ title: 'Einwilligung gespeichert' });
+        setHasConsent(true);
+        router.push('/upload/1');
+        return;
       }
 
-      // Weiterleitung zur Upload-Seite
-      router.push('/upload/1');
+      // 2. Bei Fehlern: Prüfe ob es ein Tabellen-Problem ist
+      const errorMessage = error.message || '';
+      if (errorMessage.includes('relation "consents" does not exist') || 
+          errorMessage.includes('PGRST116')) {
+        // Fallback: localStorage verwenden
+        localStorage.setItem('consent_v1', 'true');
+        toast({ 
+          title: 'Einwilligung lokal gespeichert', 
+          description: 'Die Einwilligung wurde lokal gespeichert, da die Datenbanktabelle noch nicht verfügbar ist.',
+          variant: 'default'
+        });
+        setHasConsent(true);
+        router.push('/upload/1');
+        return;
+      }
+
+      // 3. Andere Fehler: Zeige Fehlermeldung
+      toast({ 
+        title: 'Einwilligung konnte nicht gespeichert werden', 
+        description: 'Bitte versuche es erneut oder wende dich an den Support.',
+        variant: 'destructive' 
+      });
+
     } catch (error) {
       console.error('Error handling consent:', error);
+      toast({ 
+        title: 'Einwilligung konnte nicht gespeichert werden', 
+        description: 'Ein unerwarteter Fehler ist aufgetreten.',
+        variant: 'destructive' 
+      });
     } finally {
       setIsSaving(false);
     }
@@ -171,12 +190,7 @@ export default function ConsentPage() {
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-primary-subtle border">
-              <p className="text-sm text-muted-foreground">
-                <strong>Hinweis:</strong> Die Einwilligung wird im MVP lokal im Browser gespeichert. 
-                Später speichern wir sie in der Datenbank pro Creator.
-              </p>
-            </div>
+
 
             <Button 
               onClick={handleConsentAgreement} 
