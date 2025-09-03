@@ -12,12 +12,28 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  async function pingSupabase() {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    console.log('[DEBUG] SUPABASE_URL', url?.slice(0, 25), '…');
+    console.log('[DEBUG] ANON_KEY length', key?.length);
+    try {
+      const r = await fetch(`${url}/auth/v1/health`, { headers: { apikey: key }});
+      console.log('[DEBUG] /auth/v1/health', r.status, await r.text().catch(()=>''));
+    } catch (e) {
+      console.error('[DEBUG] health fetch error', e);
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
     try {
+      // Diagnostik: Ping Supabase health endpoint
+      await pingSupabase();
+      
       // Sign in with email and password
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ 
         email, 
@@ -52,9 +68,11 @@ export default function LoginPage() {
 
       // Redirect to home page
       router.replace('/')
-    } catch (err) {
-      setError('An unexpected error occurred. Please try again.')
-      console.error('Login error:', err)
+    } catch (e: any) {
+      console.error('[LOGIN ERROR]', e);
+      const errorMessage = e?.message || e?.toString() || 'An unexpected error occurred. Please try again.';
+      setError(`Login-Fehler: ${errorMessage}`);
+      alert(`Login-Fehler: ${errorMessage}`);
     } finally {
       setLoading(false)
     }
