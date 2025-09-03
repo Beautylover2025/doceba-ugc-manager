@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { getCurrentWeek } from "@/lib/weeks";
 
 interface PhotoSlot { id: string; label: string; required: boolean; }
 
@@ -109,6 +110,10 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
 
     setIsUploading(true);
     try {
+      // Get current week before upload
+      const week = await getCurrentWeek(supabase);
+      console.log("DEBUG current week:", week);
+      
       const [userId, programId] = await Promise.all([fetchUserId(), fetchProgramId()]);
       console.log("DEBUG userId/programId:", userId, programId);
 
@@ -157,7 +162,7 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
         const f = uploadedPhotos[slot.id];
         if (!f) continue;
         
-        const path = `creator/${userId}/week-${weekNumber}/${slot.id}.png`;
+        const path = `creator/${userId}/week-${week}/${slot.id}.png`;
         const { data, error } = await debugUpload(slot.id, path, f);
         
         if (error) {
@@ -175,7 +180,7 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
       console.log('[UPLOAD] Insert data:', {
         creator_id: userId,
         program_id: finalProgramId,
-        week_index: weekNumber,
+        week_index: week,
         before_path: photos["front"],
         after_path: photos["forehead"],
         status,
@@ -186,7 +191,7 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
       const { data: insertData, error: insErr } = await supabase.from("uploads").insert({
         creator_id: userId,
         program_id: finalProgramId,
-        week_index: weekNumber,
+        week_index: week,
         before_path: photos["front"],
         after_path: photos["forehead"],
         note,
@@ -202,7 +207,7 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
 
       toast({
         title: "Upload erfolgreich",
-        description: `Woche ${weekNumber}: ${uploadedRequired}/${requiredCount} gespeichert`,
+        description: `Woche ${week}: ${uploadedRequired}/${requiredCount} gespeichert`,
       });
       alert("Upload erfolgreich ✅");
 
