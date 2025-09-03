@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from "react";
-import { Camera, CheckCircle, Upload } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Camera, CheckCircle, Upload, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,71 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
   const [uploadedPhotos, setUploadedPhotos] = useState<Record<string, File>>({});
   const [note, setNote] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [hasConsent, setHasConsent] = useState<boolean | null>(null);
+  const [isCheckingConsent, setIsCheckingConsent] = useState(true);
+
+  // Check consent on component mount
+  useEffect(() => {
+    checkConsent();
+  }, []);
+
+  const checkConsent = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setHasConsent(false);
+        setIsCheckingConsent(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('consents')
+        .select('*')
+        .eq('creator_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Error checking consent:', error);
+        setHasConsent(false);
+      } else {
+        setHasConsent(!!data);
+      }
+    } catch (error) {
+      console.error('Error checking consent:', error);
+      setHasConsent(false);
+    } finally {
+      setIsCheckingConsent(false);
+    }
+  };
+
+  const handleConsentAgreement = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({ title: "Nicht eingeloggt", description: "Bitte melde dich an", variant: "destructive" });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('consents')
+        .insert({
+          creator_id: user.id,
+          version: 'v1'
+        });
+
+      if (error) {
+        console.error('Error inserting consent:', error);
+        toast({ title: "Fehler", description: "Einwilligung konnte nicht gespeichert werden", variant: "destructive" });
+        return;
+      }
+
+      setHasConsent(true);
+      toast({ title: "Einwilligung erteilt", description: "Du kannst jetzt Fotos hochladen" });
+    } catch (error) {
+      console.error('Error handling consent:', error);
+      toast({ title: "Fehler", description: "Einwilligung konnte nicht gespeichert werden", variant: "destructive" });
+    }
+  };
 
   const onSelect = (slotId: string, f?: File | null) => {
     if (!f) return;
@@ -221,6 +286,54 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
       setIsUploading(false);
     }
   };
+
+  // Show loading state while checking consent
+  if (isCheckingConsent) {
+    return (
+      <Card className="shadow-card rounded-2xl">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary mx-auto mb-4"></div>
+              <p className="text-sm text-muted-foreground">Prüfe Einwilligung...</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show consent banner if no consent found
+  if (!hasConsent) {
+    return (
+      <Card className="shadow-card rounded-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-brand-primary" />
+            Einwilligung erforderlich
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 rounded-xl bg-primary-subtle border">
+            <p className="text-sm text-foreground mb-3">
+              Um Fotos hochladen zu können, musst du zuerst der Nutzung deiner Bilder zustimmen.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Deine Fotos werden für die Analyse deines Fortschritts verwendet und sicher gespeichert.
+            </p>
+          </div>
+          <Button 
+            onClick={handleConsentAgreement}
+            className="w-full bg-gradient-primary hover:opacity-90 transition-opacity" 
+            size="lg"
+          >
+            <Shield className="h-4 w-4 mr-2" />
+            Einverstanden
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="shadow-card rounded-2xl">
