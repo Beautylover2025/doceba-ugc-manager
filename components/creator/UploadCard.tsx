@@ -309,6 +309,12 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
 
       console.log('[UPLOAD] Database insert successful:', insertData);
 
+      // Finalize upload status
+      const insertedId = insertData?.[0]?.id;
+      if (insertedId) {
+        await finalizeStatus(insertedId, toast);
+      }
+
       toast({
         title: "Upload erfolgreich",
         description: `Woche ${week}: ${uploadedRequired}/${requiredCount} gespeichert`,

@@ -75,7 +75,12 @@ export default function ConsentPage() {
       }
 
       // 1. Versuche zuerst RPC accept_consent aufzurufen
-      const { error } = await supabase.rpc('accept_consent', { p_version: 'v1' });
+      const { error } = await supabase.rpc('accept_consent', { 
+        p_version: 'v1', 
+        p_program: null, 
+        p_type: 'upload', 
+        p_ip_hash: null 
+      });
 
       if (!error) {
         // Erfolg: RPC funktioniert
