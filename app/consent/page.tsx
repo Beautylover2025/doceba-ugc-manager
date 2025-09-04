@@ -106,20 +106,20 @@ export default function ConsentPage() {
         return;
       }
 
-      // 3. Andere Fehler: Zeige Fehlermeldung
+      // 3. Andere Fehler: Zeige Fehlermeldung und behalte localStorage-Fallback
       toast({ 
         title: 'Einwilligung konnte nicht gespeichert werden', 
-        description: 'Bitte versuche es erneut oder wende dich an den Support.',
         variant: 'destructive' 
       });
+      localStorage.setItem('consent_v1', 'true');
 
     } catch (error) {
       console.error('Error handling consent:', error);
       toast({ 
         title: 'Einwilligung konnte nicht gespeichert werden', 
-        description: 'Ein unerwarteter Fehler ist aufgetreten.',
         variant: 'destructive' 
       });
+      localStorage.setItem('consent_v1', 'true');
     } finally {
       setIsSaving(false);
     }
