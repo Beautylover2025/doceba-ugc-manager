@@ -280,37 +280,39 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
       const uploadedRequired = requiredSlots.filter((s) => !!photos[s.id]).length;
       const status: "complete" | "partial" = uploadedRequired === requiredCount ? "complete" : "partial";
 
-      console.log('[UPLOAD] All uploads successful, inserting into database...');
-      console.log('[UPLOAD] Insert data:', {
+      console.log('[UPLOAD] All uploads successful, upserting into database...');
+      
+      // Prepare payload for UPSERT
+      const payload = {
         creator_id: userId,
         program_id: finalProgramId,
         week_index: week,
         before_path: photos["front"],
         after_path: photos["forehead"],
-        status,
-        note
-      });
-
-      // DB-Insert in public.uploads
-      const { data: insertData, error: insErr } = await supabase.from("uploads").insert({
-        creator_id: userId,
-        program_id: finalProgramId,
-        week_index: week,
-        before_path: photos["front"],
-        after_path: photos["forehead"],
+        left_cheek_path: photos["left-cheek"],
+        right_cheek_path: photos["right-cheek"],
         note,
-        status,
-      }).select();
+        status: 'partial' as const,
+      };
+      
+      console.log('[UPLOAD] Upsert data:', payload);
 
-      if (insErr) {
-        console.error('[UPLOAD] Insert error:', insErr);
-        throw new Error(`Datenbank-Fehler: ${insErr.message}`);
+      // DB-UPSERT in public.uploads
+      const { data: upsertData, error: upsertErr } = await supabase
+        .from("uploads")
+        .upsert(payload, { onConflict: 'creator_id,program_id,week_index', ignoreDuplicates: false })
+        .select()
+        .single();
+
+      if (upsertErr) {
+        console.error('[UPLOAD] Upsert error:', upsertErr);
+        throw new Error(`Datenbank-Fehler: ${upsertErr.message}`);
       }
 
-      console.log('[UPLOAD] Database insert successful:', insertData);
+      console.log('[UPLOAD] Database upsert successful:', upsertData);
 
       // Finalize upload status
-      const insertedId = insertData?.[0]?.id;
+      const insertedId = upsertData?.id;
       if (insertedId) {
         await finalizeStatus(insertedId, toast);
       }
