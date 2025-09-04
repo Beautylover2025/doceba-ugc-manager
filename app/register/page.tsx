@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
+import { getSiteOrigin } from '../../lib/site';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
@@ -15,13 +16,18 @@ export default function RegisterPage() {
     e.preventDefault();
     setErr(null);
 
+    const origin = getSiteOrigin();
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { name } },
+      options: { 
+        data: { name },
+        emailRedirectTo: `${origin}/`
+      },
     });
     if (error) return setErr(error.message);
-    router.push('/app');
+    router.push('/');
   };
 
   return (
