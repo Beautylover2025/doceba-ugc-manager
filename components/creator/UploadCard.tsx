@@ -363,7 +363,16 @@ export default function UploadCard({ weekNumber, isFirstWeek }: { weekNumber: nu
         <CardContent className="space-y-4">
           <div className="p-4 rounded-xl bg-primary-subtle border">
             <p className="text-sm text-foreground mb-3">
-              Um Fotos hochladen zu können, musst du zuerst der Nutzung deiner Bilder zustimmen.
+              Um Fotos hochladen zu können, musst du zuerst der Nutzung deiner Bilder zustimmen. 
+              Weitere Details findest du in unserer{' '}
+              <a 
+                href="/terms" 
+                target="_blank" 
+                rel="noopener"
+                className="text-primary hover:underline"
+              >
+                Nutzungsvereinbarung
+              </a>.
             </p>
             <p className="text-xs text-muted-foreground">
               Deine Fotos werden für die Analyse deines Fortschritts verwendet und sicher gespeichert.
