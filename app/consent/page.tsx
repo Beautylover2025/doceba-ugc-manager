@@ -198,13 +198,23 @@ export default function ConsentPage() {
               </p>
               
               <h3 className="text-lg font-semibold mb-3">Widerruf</h3>
-              <p className="text-muted-foreground mb-6">
+              <p className="text-muted-foreground mb-4">
                 Du kannst deine Einwilligung jederzeit widerrufen, indem du dich an unser Support-Team wendest. 
                 Nach dem Widerruf werden deine Bilder gelöscht und nicht weiter verwendet.
               </p>
+              
+              <p className="text-muted-foreground mb-6">
+                Weitere Details findest du in unserer{' '}
+                <a 
+                  href="/terms" 
+                  target="_blank" 
+                  rel="noopener" 
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  Nutzungsvereinbarung
+                </a>.
+              </p>
             </div>
-
-
 
             <Button 
               onClick={handleConsentAgreement} 
