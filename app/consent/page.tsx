@@ -171,7 +171,16 @@ export default function ConsentPage() {
               <CardTitle className="text-2xl">Einwilligung & Nutzungsbedingungen</CardTitle>
             </div>
             <p className="text-sm text-muted-foreground">
-              Um Fotos hochladen zu können, musst du zuerst der Nutzung deiner Bilder zustimmen.
+              Um Fotos hochladen zu können, musst du zuerst der Nutzung deiner Bilder zustimmen. 
+              Weitere Details findest du in unserer{' '}
+              <a 
+                href="/terms" 
+                target="_blank" 
+                rel="noopener"
+                className="text-primary hover:underline"
+              >
+                Nutzungsvereinbarung
+              </a>.
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
